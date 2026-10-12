@@ -1,89 +1,161 @@
-# Modular Smart Factory / Manufacturing Execution System (MES) Core Platform
+# Modular Smart Factory / Manufacturing Execution System (MES) Platform
 
-Endüstri 4.0 ve akıllı üretim hatları için geliştirilmiş, yüksek ölçeklenebilir, olay güdümlü (Event-Driven) ve çoklu endüstri alanlarına uyarlanabilir fabrika otomasyon çekirdek backend platformu.
+[![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://openjdk.org/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3.4-brightgreen.svg)](https://spring.io/projects/spring-boot)
+[![Kafka](https://img.shields.io/badge/Apache%20Kafka-3.7%20KRaft-black.svg)](https://kafka.apache.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue.svg)](https://www.postgresql.org/)
+[![Redis](https://img.shields.io/badge/Redis-7-red.svg)](https://redis.io/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+A scalable, event-driven, Industry 4.0 **Smart Factory & Manufacturing Execution System (MES)** core backend platform. Built with **Spring Boot 3 (Java 21)**, **Apache Kafka**, **PostgreSQL**, **Redis**, and **WebSockets**, designed from the ground up for modularity and adaptable to diverse industrial domains (Automotive, Electronics, Food & Beverage, Pharmaceutical, and General Manufacturing).
 
 ---
 
-## 🏗️ Mimari ve Teknoloji Yığını
+## 🏗️ Architecture & Technology Stack
 
-| Katman / Bileşen | Teknoloji / Araç | Açıklama |
+| Layer / Component | Technology | Description |
 | :--- | :--- | :--- |
-| **Backend Çekirdeği** | **Spring Boot 3.3.4 (Java 21)** | Domain Driven Design (DDD), Clean Architecture, REST API |
-| **Kalıcı Veri Tabanı** | **PostgreSQL 16** | İlişkisel veri, iş emirleri, parça geçmişi ve denetim kayıtları |
-| **Event & Telemetri Akışı** | **Apache Kafka 3.7 (KRaft)** | Sensör telemetrisi, istasyon olayları, asenkron hat haberleşmesi |
-| **Sıcak Veri & Cache** | **Redis 7** | Anlık hat durumu, makine yükleri, hızlı istasyon sorgulama |
-| **Gerçek Zamanlı İletişim**| **WebSockets (STOMP)** | Operatör ekranları & dashboard için canlı bildirimler ve anomali uyarıları |
-| **Konteynerizasyon** | **Docker & Docker Compose** | Tek komutla PostgreSQL, Kafka ve Redis altyapı kurulumu |
-| **API Dokümantasyonu** | **Swagger / OpenAPI 3** | Etkileşimli REST API dokümantasyonu (`/swagger-ui.html`) |
+| **Backend Core** | **Spring Boot 3.3.4 (Java 21)** | Domain-Driven Design (DDD), Clean Architecture, REST APIs |
+| **Relational Database** | **PostgreSQL 16** | Persistent transactional store for work orders, item audit logs, and stations |
+| **Event Streaming & Telemetry** | **Apache Kafka 3.7 (KRaft)** | Real-time sensor telemetry, station event publishing, decoupled streaming |
+| **In-Memory Cache / Hot Data** | **Redis 7** | Sub-millisecond station status lookups, real-time machine workloads |
+| **Real-Time Communication** | **WebSockets (STOMP)** | Live operator dashboard updates, instant anomaly & emergency halt alerts |
+| **Containerization** | **Docker & Docker Compose** | One-command local orchestration of PostgreSQL, Kafka, and Redis |
+| **API Documentation** | **Swagger / OpenAPI 3** | Interactive REST API exploration (`/swagger-ui.html`) |
+| **Testing** | **JUnit 5 & AssertJ** | Robust domain unit tests, state machine and business rule verification |
 
 ---
 
-## 🏭 Üretim Hattı İstasyonları (Domain Model)
+## 🏭 Production Line Stations (Domain Model)
 
-1. **Hammadde Kabul (`RAW_MATERIAL_ACCEPTANCE`):**
-   - Fabrikaya gelen hammaddelerin parti numarası (batch), miktar, birim ve kalite onayı ile kayıt altına alınması.
-2. **Kaynak / Montaj (`ASSEMBLY`):**
-   - Parçaların robot kolları (`activeRobotsCount`) ile birleştirilmesi ve fiziksel montajı.
-3. **Boyama (`PAINTING`):**
-   - Yüzey kaplama, fırınlama ve kurutma üniteleri. Sıcaklık eşik değerleri (`temperatureThreshold`) ile anomali takibi.
-4. **Kalite Testi (`QUALITY_CHECK`):**
-   - Tolerans ve standart kontrolleri. Geçen ürünler `PASSED`, kusurlu ürünler `REWORK` (maksimum 2 hak) veya `FAILED` (hurda).
-5. **Paketleme (`PACKAGING`):**
-   - Kalite testinden başarıyla geçen nihai ürünlerin mühürlenip sevkiyata hazırlanması (`PACKED`).
+1. **Raw Material Acceptance (`RAW_MATERIAL_ACCEPTANCE`):**
+   - Ingests incoming industrial materials, validates batch numbers (`batchNumber`), supplier certificates, quantities, units, and initial quality clearance.
+2. **Assembly & Welding (`ASSEMBLY`):**
+   - Physical assembly and joinery stage. Features robotic arm integration (`activeRobotsCount`) and real-time operational status tracking.
+3. **Coating & Painting (`PAINTING`):**
+   - Surface finish, industrial ovens, and curing chambers. Monitored with critical temperature thresholds (`temperatureThreshold`) for anomaly prevention.
+4. **Quality Inspection (`QUALITY_CHECK`):**
+   - Stringent tolerance and defect inspection. Items pass to packaging (`PASSED`), undergo rework cycles (`REWORK`, up to 2 attempts), or are scrapped (`FAILED`).
+5. **Packaging & Dispatch (`PACKAGING`):**
+   - High-throughput packaging, barcode assignment, and dispatch staging (`PACKED`).
 
 ---
 
-## 📋 İş Emri (Work Order) ve Kalem (Production Item) Durum Çevrimi
+## 📋 State Machines & Lifecycles
+
+### 1. Work Order Lifecycle (`WorkOrder`)
 
 ```mermaid
 stateDiagram-v2
-    [*] --> CREATED: İş Emri Açıldı
-    CREATED --> IN_ASSEMBLY: Montaj Başladı
-    IN_ASSEMBLY --> QUALITY_CHECK: Montaj Tamamlandı
-    QUALITY_CHECK --> COMPLETED: Hedef Adet Karşılandı
-    QUALITY_CHECK --> FAILED: Rework Limiti Aşıldı / Kusur
+    [*] --> CREATED: Work Order Issued
+    CREATED --> IN_ASSEMBLY: Assembly Started
+    IN_ASSEMBLY --> QUALITY_CHECK: Quality Inspection Gate
+    QUALITY_CHECK --> COMPLETED: Target Quantity Reached
+    QUALITY_CHECK --> FAILED: Defect Threshold / Cancelled
     
-    state "Acil Durdurma" as HALT {
-        IN_ASSEMBLY --> HALTED: Sensör Anomali / Acil Buton
-        QUALITY_CHECK --> HALTED: Aşırı Sıcaklık / Hat Arızası
-        HALTED --> IN_ASSEMBLY: Hata Giderildi (Resume)
-        HALTED --> QUALITY_CHECK: Hata Giderildi (Resume)
+    state "Emergency Safety Interlock" as SAFETY {
+        IN_ASSEMBLY --> HALTED: Temperature Alarm / E-Stop
+        QUALITY_CHECK --> HALTED: Sensor Disconnect / E-Stop
+        HALTED --> IN_ASSEMBLY: Alarm Cleared (Resume)
+        HALTED --> QUALITY_CHECK: Alarm Cleared (Resume)
     }
 ```
 
-### 🧩 Üretim Kalemi (Production Item) Yaşam Döngüsü:
-- `CREATED` ➔ `IN_PROGRESS` (İstasyonda işleniyor) ➔ `PASSED` (İstasyon tamamlandı)
-- Kalite İstasyonu Testi:
-  - Onay ➔ `PACKAGING` ➔ `PACKED` (Tamamlandı)
-  - Kusur ➔ `REWORK` (Max 2 deneme, montaj/boyamaya dönüş) ➔ Sınır aşılırsa `FAILED`
+### 2. Production Item Lifecycle (`ProductionItem`)
+
+- **Standard Progression:**  
+  `CREATED` ➔ `IN_PROGRESS` (Station Entry) ➔ `PASSED` (Station Exit)
+- **Quality Inspection Decision Gate:**
+  - **Passed:** Advances to `PACKAGING` ➔ `PACKED` (Order completion incremented).
+  - **Defect Identified:** Routes to `REWORK` (re-enters Assembly or Painting, max 2 iterations).
+  - **Limit Exceeded:** Automatic escalation to `FAILED` (scrap disposition).
 
 ---
 
-## 🌐 Çoklu Endüstri Uyarlanabilirliği (Modular Industry Extensibility)
+## 🛡️ Business Rules & Safety Interlocks
 
-Platform, otomotiv dışındaki sektörlere kolayca uyarlanabilecek şekilde genişletilebilir:
-- **`IndustryType.AUTOMOTIVE`**: Yüksek robotik montaj, boya fırını sıcaklık toleransı.
-- **`IndustryType.ELECTRONICS`**: ESD (statik elektrik) koruması, mikroskopik lehim muayenesi.
-- **`IndustryType.FOOD_AND_BEVERAGE`**: Soğuk zincir sensörleri, pastörizasyon fırınları, hijyen kontrolü.
-- **`IndustryType.PHARMACEUTICAL`**: Sterilizasyon eşikleri, GMP parti takibi.
+- **Pipeline Sequence Enforcement:** Discrete items cannot skip stations (e.g., jumping from Assembly directly to Packaging without Painting and Quality Inspection).
+- **Quality Gate Invariant:** An item is strictly barred from entry into Packaging without an explicit `PASSED` verification at Quality Check.
+- **Rework Boundary:** Configurable limit (`DEFAULT_MAX_REWORK_LIMIT = 2`). Exceeding this boundary triggers `MaxReworkExceededException` and transitions the unit to `FAILED`.
+- **Emergency Stop Safety Interlock:** When a Work Order or Station is placed into `HALTED` status, all item progression is immediately locked until explicitly authorized via `resume()`.
 
 ---
 
-## 🚀 Hızlı Başlangıç
+## 🌐 Multi-Industry Domain Customization
 
-### 1. Altyapıyı Başlatın (Docker Compose)
+The platform core is built with polymorphic station strategies and an industry abstraction (`IndustryType`):
+
+- **Automotive (`AUTOMOTIVE`):** High-density robotic welding, oven cure temperatures up to 200°C.
+- **Electronics (`ELECTRONICS`):** Cleanroom ESD monitoring, reflow soldering profiles, automated optical inspection (AOI).
+- **Food & Beverage (`FOOD_AND_BEVERAGE`):** Cold-chain thermal telemetry, pasteurization thresholds, HACCP compliance.
+- **Pharmaceutical (`PHARMACEUTICAL`):** Sterilization validation, GMP cleanroom pressure differentials, batch genealogy.
+- **General Manufacturing (`GENERAL_MANUFACTURING`):** Standard discrete manufacturing pipeline.
+
+---
+
+## 📅 5-Week Sprint Roadmap
+
+- [x] **Week 1: Domain & Model Design**
+  - Entity design for Stations, Work Orders, Production Items, and Raw Materials
+  - Domain invariants, state transition validators, and custom business exceptions
+  - 100% passing unit test suite with JUnit 5 and AssertJ
+- [ ] **Week 2: State Machine & Minimal CRUD REST API**
+  - Transition orchestration service and validation pipeline
+  - RESTful endpoints for Work Orders and Production Items
+  - Swagger/OpenAPI interactive documentation
+- [ ] **Week 3: Apache Kafka Integration & Telemetry Simulator**
+  - Docker Compose Kafka (KRaft) integration
+  - Synthetic IoT telemetry generator (temperature, vibration, pressure)
+  - Kafka consumer engine for streaming ingest
+- [ ] **Week 4: Anomaly Detection, E-Stop Interlock & WebSockets**
+  - Threshold-based anomaly engine (e.g., Oven Temp > 200°C)
+  - Automatic station & work order `HALTED` cascade
+  - Real-time STOMP WebSocket push to operator dashboard
+- [ ] **Week 5: End-to-End Testing, Swagger & Deployment**
+  - Integration tests, performance benchmarks, and production-ready packaging
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+- **Java 21** or later
+- **Apache Maven 3.9+**
+- **Docker & Docker Compose**
+
+### 1. Launch Infrastructure Services
+Spin up PostgreSQL, Redis, and Apache Kafka using Docker Compose:
 ```bash
 docker compose up -d
 ```
-*PostgreSQL (`5432`), Redis (`6379`) ve Apache Kafka (`9092`) servisleri ayağa kalkar.*
 
-### 2. Projeyi Derleyin ve Test Edin
+Verify running containers:
+```bash
+docker compose ps
+```
+
+### 2. Build and Run Unit Tests
 ```bash
 mvn clean test
 ```
 
-### 3. Uygulamayı Çalıştırın
+### 3. Run Application
 ```bash
 mvn spring-boot:run
 ```
-Swagger UI Arayüzü: `http://localhost:8080/swagger-ui.html`
+
+Once started:
+- **Application Port:** `http://localhost:8080`
+- **Swagger / OpenAPI Documentation:** `http://localhost:8080/swagger-ui.html`
+- **OpenAPI Schema:** `http://localhost:8080/api-docs`
+
+---
+
+## 🌿 Git & Branching Strategy
+
+This project adheres to **Conventional Commits** and strict branch isolation:
+- `main` branch is protected.
+- Feature branches: `feat/<feature-name>`
+- Documentation branches: `docs/<description>`
+- Bugfixes: `fix/<issue-name>`
+- Maintenance: `chore/<task-name>`
